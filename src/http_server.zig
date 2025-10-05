@@ -4,31 +4,47 @@ pub const HttpServer = struct {
     address: std.net.Address,
     listener: std.net.Server,
     allocator: std.mem.Allocator,
+    thread_pool: *std.Thread.Pool,
 
     const Self = @This();
 
-    pub fn init(ip: []const u8, port: u16, allocator: std.mem.Allocator) !HttpServer {
+    pub fn init(ip: []const u8, port: u16, allocator: std.mem.Allocator, jobs: u8) !HttpServer {
         const address = try std.net.Address.parseIp(ip, port);
         const listener = try address.listen(.{ .reuse_address = true });
+
+        const thread_pool = try allocator.create(std.Thread.Pool);
+        try thread_pool.init(.{ .allocator = allocator, .n_jobs = jobs });
 
         std.debug.print("Server listening on: {f}\n", .{address});
         return HttpServer{
             .address = address,
             .listener = listener,
             .allocator = allocator,
+            .thread_pool = thread_pool,
         };
     }
 
     pub fn serve(self: *Self) !void {
         while (true) {
-            var connection = self.listener.accept() catch |err| {
+            const connection = self.listener.accept() catch |err| {
                 std.log.err("Failed to accept connection: {}", .{err});
                 continue;
             };
-            defer connection.stream.close();
 
-            try self.handleClient(&connection);
+            const connPtr = try self.allocator.create(std.net.Server.Connection);
+            connPtr.* = connection;
+            try self.thread_pool.spawn(handleClientWrapper, .{ self, connPtr });
         }
+    }
+
+    fn handleClientWrapper(self: *Self, connPtr: *std.net.Server.Connection) void {
+        defer {
+            connPtr.stream.close();
+            self.allocator.destroy(connPtr);
+        }
+        self.handleClient(connPtr) catch |err| {
+            std.log.err("Error handling client {f}: {}", .{ connPtr.address, err });
+        };
     }
 
     fn handleClient(self: *Self, connection: *std.net.Server.Connection) !void {
@@ -84,6 +100,8 @@ pub const HttpServer = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        self.thread_pool.deinit();
+        self.allocator.destroy(self.thread_pool);
         self.listener.deinit();
     }
 };
