@@ -21,7 +21,10 @@ pub const HttpServer = struct {
 
     pub fn serve(self: *Self) !void {
         while (true) {
-            var connection = try self.listener.accept();
+            var connection = try self.listener.accept() catch |err| {
+                std.log.err("Failed to accept connection: {}", .{err});
+                continue;
+            };
             defer connection.stream.close();
 
             try self.handleClient(&connection);
@@ -34,10 +37,18 @@ pub const HttpServer = struct {
         if (read_size == 0) return;
 
         const request = buffer[0..read_size];
-        var response: []const u8 = undefined;
+        const path = if (std.mem.startsWith(u8, request, "GET ")) {
+            request[4 .. std.mem.indexOf(u8, request, " HTTP/") orelse request.len];
+        } else {
+            "(invalid request)";
+        };
 
+        std.log.info("Client {} requested: {s}", .{ connection.address, path });
+
+        var response: []const u8 = undefined;
         if (std.mem.startsWith(u8, request, "GET / HTTP/1.1")) {
-            const file = std.fs.cwd().openFile("./html/index.html", .{}) catch {
+            const file = std.fs.cwd().openFile("./html/index.html", .{}) catch |err| {
+                std.log.err("Failed to open index.html: {}", .{err});
                 response =
                     \\HTTP/1.1 500 Internal Server Error
                     \\Content-Type: text/plain
