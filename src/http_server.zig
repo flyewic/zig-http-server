@@ -21,7 +21,7 @@ pub const HttpServer = struct {
 
     pub fn serve(self: *Self) !void {
         while (true) {
-            var connection = try self.listener.accept() catch |err| {
+            var connection = self.listener.accept() catch |err| {
                 std.log.err("Failed to accept connection: {}", .{err});
                 continue;
             };
@@ -37,13 +37,12 @@ pub const HttpServer = struct {
         if (read_size == 0) return;
 
         const request = buffer[0..read_size];
-        const path = if (std.mem.startsWith(u8, request, "GET ")) {
-            request[4 .. std.mem.indexOf(u8, request, " HTTP/") orelse request.len];
-        } else {
+        const path = if (std.mem.startsWith(u8, request, "GET "))
+            request[4..(std.mem.indexOf(u8, request, " HTTP/") orelse request.len)]
+        else
             "(invalid request)";
-        };
 
-        std.log.info("Client {} requested: {s}", .{ connection.address, path });
+        std.log.info("Client {f} requested: {s}", .{ connection.address, path });
 
         var response: []const u8 = undefined;
         if (std.mem.startsWith(u8, request, "GET / HTTP/1.1")) {
