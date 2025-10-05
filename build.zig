@@ -83,6 +83,8 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
+    exe.linkLibC();
+
     // This declares intent for the executable to be installed into the
     // install prefix when running `zig build` (i.e. when executing the default
     // step). By default the install prefix is `zig-out/` but can be overridden
@@ -94,7 +96,7 @@ pub fn build(b: *std.Build) void {
     // This will evaluate the `run` step rather than the default step.
     // For a top level step to actually do something, it must depend on other
     // steps (e.g. a Run step, as we will see in a moment).
-    const run_step = b.step("run", "Run the app");
+    const run_step = b.step("run", "Run the HTTP server");
 
     // This creates a RunArtifact step in the build graph. A RunArtifact step
     // invokes an executable compiled by Zig. Steps will only be executed by the
