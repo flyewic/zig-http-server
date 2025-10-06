@@ -144,7 +144,6 @@ pub const HttpServer = struct {
         if (read_size == 0) return;
 
         const request = buffer[0..read_size];
-        std.debug.print("\nRaw Request: {s}", .{request});
 
         if (!std.mem.startsWith(u8, request, "GET ")) {
             std.log.err("Invalid HTTP method from client {f}", .{connection.address});
@@ -160,8 +159,6 @@ pub const HttpServer = struct {
             return try self.sendError(connection, 400, "Bad Request");
         };
         var req_path = request[path_start + 1 .. path_end];
-
-        std.debug.print("\nRequested: {s}\n", .{req_path});
 
         if (std.mem.indexOfScalar(u8, req_path, 0) != null) {
             std.log.err("Invalid path with null byte from client {f}", .{connection.address});
