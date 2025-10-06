@@ -17,7 +17,16 @@ fn readConfig(allocator: std.mem.Allocator, file_path: []const u8) !std.json.Par
 pub fn main() !void {
     const allocator = std.heap.c_allocator;
 
-    var parsed = try readConfig(allocator, "config.json");
+    var parsed = readConfig(allocator, "config.json") catch |err| {
+        if (err == error.FileNotFound) {
+            std.log.err("Configuration file not found, has to be named config.json!\n", .{});
+        } else if (err == error.UnexpectedEndOfInput) {
+            std.log.err("There's an issue with the configuration file, please refer to the GitHub for proper syntax!\n", .{});
+        } else {
+            std.log.err("Unknown error!\n", .{});
+        }
+        return err;
+    };
     defer parsed.deinit();
 
     const config = parsed.value;
