@@ -6,6 +6,7 @@ pub const HttpServer = struct {
     allocator: std.mem.Allocator,
     thread_pool: *std.Thread.Pool,
     doc_root: []const u8,
+    absolute_doc_root: []const u8,
 
     const Self = @This();
 
@@ -16,6 +17,10 @@ pub const HttpServer = struct {
         const thread_pool = try allocator.create(std.Thread.Pool);
         try thread_pool.init(.{ .allocator = allocator, .n_jobs = jobs });
 
+        var doc_root_buf: [std.fs.max_path_bytes]u8 = undefined;
+        const doc_root_tmp = try std.fs.cwd().realpath(doc_root, &doc_root_buf);
+        const absolute_doc_root = try allocator.dupe(u8, doc_root_tmp);
+
         std.debug.print("Server listening on: {f}\n", .{address});
         return HttpServer{
             .address = address,
@@ -23,6 +28,7 @@ pub const HttpServer = struct {
             .allocator = allocator,
             .thread_pool = thread_pool,
             .doc_root = doc_root,
+            .absolute_doc_root = absolute_doc_root,
         };
     }
 
@@ -54,7 +60,7 @@ pub const HttpServer = struct {
             std.log.err("Failed to stat file {s} for client {f}: {}", .{ file_path, connection.address, err });
             return try self.sendError(connection, 500, "Internal Server Error");
         };
-        if (stat.size > 1024 * 1024 * 10) { // Cap at 10MB
+        if (stat.size > 1024 * 1024 * 10) { // maximum 10MB
             std.log.err("File {s} too large for client {f}", .{ file_path, connection.address });
             return try self.sendError(connection, 413, "Payload Too Large");
         }
@@ -138,6 +144,7 @@ pub const HttpServer = struct {
         if (read_size == 0) return;
 
         const request = buffer[0..read_size];
+        std.debug.print("\nRaw Request: {s}", .{request});
 
         if (!std.mem.startsWith(u8, request, "GET ")) {
             std.log.err("Invalid HTTP method from client {f}", .{connection.address});
@@ -153,6 +160,8 @@ pub const HttpServer = struct {
             return try self.sendError(connection, 400, "Bad Request");
         };
         var req_path = request[path_start + 1 .. path_end];
+
+        std.debug.print("\nRequested: {s}\n", .{req_path});
 
         if (std.mem.indexOfScalar(u8, req_path, 0) != null) {
             std.log.err("Invalid path with null byte from client {f}", .{connection.address});
@@ -170,26 +179,30 @@ pub const HttpServer = struct {
             std.log.err("Path too long from client {f}: {s}", .{ connection.address, req_path });
             return try self.sendError(connection, 414, "URI Too Long");
         }
-        var real_path_buf: [std.fs.max_path_bytes]u8 = undefined;
-        const full_path = std.fs.cwd().realpath(self.doc_root, &real_path_buf) catch |err| {
-            std.log.err("Failed to resolve doc_root {s} for client {f}: {}", .{ self.doc_root, connection.address, err });
-            return try self.sendError(connection, 500, "Internal Server Error");
-        };
-        const resolved_path = std.fs.path.resolve(self.allocator, &[_][]const u8{ full_path, req_path[1..] }) catch |err| {
+
+        // buffer no longer needed as the real path is already allocated on heap
+        // var real_path_buf: [std.fs.max_path_bytes]u8 = undefined;
+
+        const full_path = std.fs.path.resolve(self.allocator, &[_][]const u8{ self.absolute_doc_root, req_path[1..] }) catch |err| {
             std.log.err("Failed to resolve path {s} for client {f}: {}", .{ req_path, connection.address, err });
             return try self.sendError(connection, 400, "Bad Request: Invalid path");
         };
-        defer self.allocator.free(resolved_path);
+        defer self.allocator.free(full_path);
+
+        if (!std.mem.startsWith(u8, full_path, self.absolute_doc_root)) {
+            std.log.err("Scope traversal attempted by client {f}: Requested {s}, resolved to {s}", .{ connection.address, req_path, full_path });
+            return try self.sendError(connection, 403, "Forbidden: Out Of Scope");
+        }
 
         std.log.info("Client {f} requested: {s}", .{ connection.address, req_path });
 
-        var dir = std.fs.cwd().openDir(resolved_path, .{}) catch |err| switch (err) {
+        var dir = std.fs.cwd().openDir(full_path, .{}) catch |err| switch (err) {
             error.FileNotFound, error.NotDir => {
-                return try self.serveFile(connection, resolved_path);
+                return try self.serveFile(connection, full_path);
             },
             error.AccessDenied => return try self.sendError(connection, 403, "Forbidden"),
             else => {
-                std.log.err("Filesystem error for path {s} from client {f}: {}", .{ resolved_path, connection.address, err });
+                std.log.err("Filesystem error for path {s} from client {f}: {}", .{ full_path, connection.address, err });
                 return try self.sendError(connection, 500, "Internal Server Error");
             },
         };
@@ -201,6 +214,7 @@ pub const HttpServer = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        self.allocator.free(self.absolute_doc_root);
         self.thread_pool.deinit();
         self.allocator.destroy(self.thread_pool);
         self.listener.deinit();
