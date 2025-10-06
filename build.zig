@@ -105,6 +105,7 @@ pub fn build(b: *std.Build) void {
     // how this Run step will be executed. In our case we want to run it when
     // the user runs `zig build run`, so we create a dependency link.
     const run_cmd = b.addRunArtifact(exe);
+    run_cmd.cwd = b.path("src/");
     run_step.dependOn(&run_cmd.step);
 
     // By making the run step depend on the default step, it will be run from the
