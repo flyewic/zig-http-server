@@ -39,9 +39,9 @@ pub const HttpServer = struct {
                 continue;
             };
 
-            const connPtr = try self.allocator.create(std.net.Server.Connection);
-            connPtr.* = connection;
-            try self.thread_pool.spawn(handleClientWrapper, .{ self, connPtr });
+            const conn_ptr = try self.allocator.create(std.net.Server.Connection);
+            conn_ptr.* = connection;
+            try self.thread_pool.spawn(handleClientWrapper, .{ self, conn_ptr });
         }
     }
 
@@ -128,13 +128,13 @@ pub const HttpServer = struct {
         };
     }
 
-    fn handleClientWrapper(self: *Self, connPtr: *std.net.Server.Connection) void {
+    fn handleClientWrapper(self: *Self, conn_ptr: *std.net.Server.Connection) void {
         defer {
-            connPtr.stream.close();
-            self.allocator.destroy(connPtr);
+            conn_ptr.stream.close();
+            self.allocator.destroy(conn_ptr);
         }
-        self.handleClient(connPtr) catch |err| {
-            std.log.err("Error handling client {f}: {}", .{ connPtr.address, err });
+        self.handleClient(conn_ptr) catch |err| {
+            std.log.err("Error handling client {f}: {}", .{ conn_ptr.address, err });
         };
     }
 
