@@ -65,11 +65,21 @@ pub const HttpServer = struct {
             return try self.sendError(connection, 413, "Payload Too Large");
         }
 
-        const file_content = file.readToEndAlloc(self.allocator, stat.size) catch |err| {
-            std.log.err("Failed to read file {s} for client {f}: {}", .{ file_path, connection.address, err });
+        const file_content = self.allocator.alloc(u8, stat.size) catch |err| {
+            std.log.err("Failed to allocate memory for file {s} for client {f}: {}", .{ file_path, connection.address, err });
             return try self.sendError(connection, 500, "Internal Server Error");
         };
         defer self.allocator.free(file_content);
+
+        // sanity check to make sure the entire file was read
+        const bytes_read = file.readAll(file_content) catch |err| {
+            std.log.err("Failed to read file {s} for client {f}: {}", .{ file_path, connection.address, err });
+            return try self.sendError(connection, 500, "Internal Server Error");
+        };
+        if (bytes_read != stat.size) {
+            std.log.err("Incomplete read for file {s} for client {f}: expected {d}, got {d}", .{ file_path, connection.address, stat.size, bytes_read });
+            return try self.sendError(connection, 500, "Internal Server Error");
+        }
 
         const ext = std.fs.path.extension(file_path);
         const content_type = getContentType(ext);

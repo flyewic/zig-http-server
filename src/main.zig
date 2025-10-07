@@ -9,13 +9,13 @@ const Config = struct {
 };
 
 fn readConfig(allocator: std.mem.Allocator, file_path: []const u8) !std.json.Parsed(Config) {
-    const data = try std.fs.cwd().readFileAlloc(allocator, file_path, 512);
+    const data = try std.fs.cwd().readFileAlloc(file_path, allocator, std.Io.Limit.limited(1024 * 1024));
     defer allocator.free(data);
     return std.json.parseFromSlice(Config, allocator, data, .{ .allocate = .alloc_always });
 }
 
 pub fn main() !void {
-    const allocator = std.heap.c_allocator;
+    const allocator = std.heap.smp_allocator;
 
     var parsed = readConfig(allocator, "config.json") catch |err| {
         if (err == error.FileNotFound) {
