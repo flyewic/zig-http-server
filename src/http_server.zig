@@ -21,7 +21,7 @@ pub const HttpServer = struct {
         const doc_root_tmp = try std.fs.cwd().realpath(doc_root, &doc_root_buf);
         const absolute_doc_root = try allocator.dupe(u8, doc_root_tmp);
 
-        std.debug.print("Server listening on: {f}\n", .{address});
+        std.debug.print("Server using {} threads\nServing: {s}\nListening on: {f}\n", .{ jobs, absolute_doc_root, address });
         return HttpServer{
             .address = address,
             .listener = listener,
