@@ -10,7 +10,7 @@ pub const HttpServer = struct {
 
     const Self = @This();
 
-    pub fn init(host: []const u8, port: u16, allocator: std.mem.Allocator, jobs: u8, doc_root: []const u8) !HttpServer {
+    pub fn init(host: []const u8, port: u16, allocator: std.mem.Allocator, jobs: usize, doc_root: []const u8) !HttpServer {
         const address = try std.net.Address.parseIp(host, port);
         const listener = try address.listen(.{ .reuse_address = true });
 

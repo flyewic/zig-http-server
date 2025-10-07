@@ -1,6 +1,6 @@
 {
   "host": "127.0.0.1",
   "port": 8080,
-  "thread_count": 4,
+  "thread_count": 0,
   "working_dir": "./public"
 }

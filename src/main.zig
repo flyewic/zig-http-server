@@ -4,7 +4,7 @@ const HttpServer = @import("http_server.zig").HttpServer;
 const Config = struct {
     host: []const u8,
     port: u16,
-    thread_count: u8,
+    thread_count: usize,
     working_dir: []const u8,
 };
 
@@ -29,7 +29,10 @@ pub fn main() !void {
     };
     defer parsed.deinit();
 
-    const config = parsed.value;
+    var config = parsed.value;
+    if (config.thread_count == 0) {
+        config.thread_count = std.Thread.getCpuCount() catch 1;
+    }
 
     var server = try HttpServer.init(config.host, config.port, allocator, config.thread_count, config.working_dir);
     defer server.deinit();
